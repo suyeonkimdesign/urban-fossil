@@ -5,7 +5,6 @@ const MANIFEST_URL   = "assets/manifest.json";
 const META_URL       = "assets/meta.json";
 const GRID_COLS      = 8; 
 
-// DOM
 const grid      = document.getElementById("grid");
 const infoCard  = document.getElementById("infoCard");
 const infoImg   = document.getElementById("infoImage");
@@ -51,7 +50,7 @@ function buildAlphabeticalList(manifest){
   return out;
 }
 
-// grid view
+
 function renderGrid(items){
   grid.textContent = "";
   if (!items.length){
@@ -83,7 +82,7 @@ function renderGrid(items){
 
 let metaCache = {};
 
-// index info card
+
 function openInfo(letter, file){
   const key = `${letter}/${file}`;
   const fallbackRel = `${IMAGE_ROOT}/${key}`;
@@ -146,7 +145,7 @@ function openInfo(letter, file){
   });
 }
 
-//load function that tries all URLs
+
 function tryOriginal(urls, onSuccess, onFail){
   let i = 0;
   const tester = new Image();

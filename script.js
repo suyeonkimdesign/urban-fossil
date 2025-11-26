@@ -144,15 +144,13 @@ const byFile   = file   && OVERRIDES[file]   ? OVERRIDES[file]   : {};
 
 async function loadManifest() {
   try {
-    const res = await fetch(MANIFEST_URL, { cache: "no-store" });
+    const res = await fetch(MANIFEST_URL);
     if (!res.ok) throw new Error(res.statusText);
     const json = await res.json();
-
     const norm = {};
-    for (const [key, arr] of Object.entries(json)) {
-      const K = (key || "").toUpperCase();
-      if (!/^[A-Z]$/.test(K) || !Array.isArray(arr)) continue;
-      norm[K] = arr.filter(v => typeof v === "string");
+    for (const [k, arr] of Object.entries(json)) {
+      const K = k.toUpperCase();
+      if (/^[A-Z]$/.test(K) && Array.isArray(arr)) norm[K] = arr;
     }
     return norm;
   } catch {
@@ -227,6 +225,8 @@ function renderFromPlan(ratio) {
     img.src = src;
     img.alt = letter;     
     img.className = "letter-img";
+    img.loading = "lazy";        
+    img.fetchPriority = "low";     
     img.decoding = "async";
 
     applyOverrides(img, letter, file);
@@ -333,13 +333,21 @@ if (silhouetteBtn){
   renderFromPlan(REPLACE_RATIO);
 
 
-  if (slider){
-    slider.addEventListener("input", () => {
-      slider.setAttribute("aria-valuenow", slider.value);
-      setRatioFromSlider(slider.value);
+if (slider){
+  let pending = false;
+  slider.addEventListener("input", () => {
+    slider.setAttribute("aria-valuenow", slider.value);
+    setRatioFromSlider(slider.value);
+
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
       renderFromPlan(REPLACE_RATIO);
     });
-  }
+  });
+}
+
 
 
   if (reload){
