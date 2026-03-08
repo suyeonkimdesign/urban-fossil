@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Urban Fossil — Interactive</title>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #loading {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: radial-gradient(circle at center, #111 0%, #000 60%);
+      z-index: 10;
+    }
+
+    #hint {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      font-size: 12px;
+      opacity: 0.6;
+      max-width: 260px;
+      line-height: 1.4;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading camera &amp; hand tracking…</div>
+  <div id="hint">Move your hand in front of the camera to spray Urban Fossil letters. Press “C” to clear.</div>
+
+  <!-- p5.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <!-- ml5.js -->
+  <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+
+  <script>
+    let video;
+    let handpose;
+    let predictions = [];
+
+    let glyphImages = [];
+    let glyphs = [];
+
+    const IMAGE_ROOT    = "assets/letters";  
+    const MANIFEST_PATH = "assets/manifest.json";
+
+    let manifestData = null;
+
+    class Glyph {
+      constructor(x, y, img) {
+        this.x = x;
+        this.y = y;
+
+        this.vx = random(-1, 1);
+        this.vy = random(-0.5, 1.5);
+
+        this.life = 255;
+        this.img = img;
+        this.size = random(40, 120);    
+        this.rotation = random(TWO_PI);
+        this.rotationSpeed = random(-0.01, 0.01);
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.01;               
+        this.rotation += this.rotationSpeed;
+        this.life -= 3;
+      }
+
+      draw() {
+        push();
+        translate(this.x, this.y);
+        rotate(this.rotation);
+        imageMode(CENTER);
+        tint(255, this.life);
+        image(this.img, 0, 0, this.size, this.size);
+        pop();
+      }
+
+      isDead() {
+        return this.life <= 0;
+      }
+    }
+
+    function preload() {
+      manifestData = loadJSON(MANIFEST_PATH);
+    }
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      noStroke();
+
+      if (manifestData) {
+        for (const [letter, files] of Object.entries(manifestData)) {
+          if (!Array.isArray(files)) continue;
+          files.forEach(fileName => {
+            const imgPath = `${IMAGE_ROOT}/${letter}/${fileName}`;
+            const img = loadImage(
+              imgPath,
+              () => {  },
+              (err) => {
+                console.error("Error loading image:", imgPath, err);
+              }
+            );
+            glyphImages.push(img);
+          });
+        }
+      }
+
+
+      video = createCapture(VIDEO);
+      video.size(640, 480);
+      video.hide(); 
+
+ 
+      handpose = ml5.handpose(video, onModelReady);
+      handpose.on("predict", results => {
+        predictions = results;
+      });
+    }
+
+    function onModelReady() {
+      console.log("Handpose model ready");
+      const loadingEl = document.getElementById("loading");
+      if (loadingEl) loadingEl.style.display = "none";
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+
+    function draw() {
+
+      if (video) {
+        image(video, 0, 0, width, height);
+      } else {
+        background(0);
+      }
+
+
+      fill(0, 80);  
+      rect(0, 0, width, height);
+
+
+      for (let pred of predictions) {
+        if (pred.annotations && pred.annotations.indexFinger) {
+          const tip = pred.annotations.indexFinger[3]; 
+          const vx = video.width;
+          const vy = video.height;
+
+          const x = map(tip[0], 0, vx, 0, width);
+          const y = map(tip[1], 0, vy, 0, height);
+
+
+          if (frameCount % 2 === 0 && glyphImages.length > 0) {
+            const img = random(glyphImages);
+            glyphs.push(new Glyph(x, y, img));
+          }
+        }
+      }
+
+
+      glyphs.forEach(g => {
+        g.update();
+        g.draw();
+      });
+
+   
+      glyphs = glyphs.filter(g => !g.isDead());
+    }
+
+ 
+    function keyPressed() {
+      if (key === "c" || key === "C") {
+        glyphs = [];
+      }
+    }
+  </script>
+</body>
+</html>

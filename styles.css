@@ -12,11 +12,10 @@ html, body {
   align-items: flex-start;
   justify-content: center;
 
-
   min-height: 100vh;
   min-height: 100svh;
 
-  padding: 4vw;
+  padding: calc(var(--toolbar-h) + 4vw) 4vw 4vw;
 }
 
 
@@ -81,58 +80,92 @@ body, button, input, textarea, select, label, .toolbar, .btn, .custom-form {
 .alternate { outline: 0; }
 
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root{
+  --toolbar-h: 90px;
+}
+
+.page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100svh;
+  padding: calc(var(--toolbar-h) + 2vw) 4vw 4vw;
+  margin-top: calc(var(--toolbar-h) * -1);
+}
+
+:root{
+  --toolbar-h: 90px;
+}
+
 .toolbar {
   position: sticky;
   top: 0;
-  left: 0;
   width: 100%;
-  z-index: 10;
+  z-index: 100;
 
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 
-  padding: 1.1rem 4vw;
-  min-height: 72px;
-
-  background: rgba(244, 244, 244, 0.6);
-  backdrop-filter: blur(8px) saturate(180%);
-  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  padding: 2rem 5vw;
+  padding-bottom: 2rem;
+  background: rgba(244, 244, 244, 0.34);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(10px) saturate(180%);
 
   border: none;
   box-shadow: none;
-  overflow: hidden;
-  position: relative;
+  isolation: isolate;
+
+  /* this is the important part */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0,0,0,1) 0%,
+    rgba(0,0,0,1) 72%,
+    rgba(0,0,0,0.82) 82%,
+    rgba(0,0,0,0.42) 92%,
+    rgba(0,0,0,0) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0,0,0,1) 0%,
+    rgba(0,0,0,1) 72%,
+    rgba(0,0,0,0.82) 82%,
+    rgba(0,0,0,0.42) 92%,
+    rgba(0,0,0,0) 100%
+  );
+}
+
+/* optional soft sheen */
+.toolbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.28) 0%,
+    rgba(255,255,255,0.10) 45%,
+    rgba(255,255,255,0) 100%
+  );
 }
 
 .toolbar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  content: none;
+}
 
-  background: linear-gradient(
-    to bottom,
-    rgba(244, 244, 244, 1) 0%,
-    rgba(244, 244, 244, 0.7) 50%,
-    rgba(244, 244, 244, 0.0) 100%
-  );
-
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-
-  mask-image: linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 1) 0%,
-    rgba(0, 0, 0, 0.7) 50%,
-    rgba(0, 0, 0, 0) 100%
-  );
-  mask-composite: intersect;
-
-  z-index: -1;
+.toolbar > * {
+  position: relative;
+  z-index: 1;
 }
 
 
