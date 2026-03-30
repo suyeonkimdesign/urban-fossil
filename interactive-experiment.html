@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Urban Fossil — AI Forensic Lab</title>
+
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: 'Courier New', monospace;
+    }
+    canvas { display: block; }
+    #loading {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: radial-gradient(circle at center, #111 0%, #000 60%);
+      z-index: 10;
+    }
+    #hint {
+      position: fixed; 
+      right: 24px; 
+      bottom: 24px;
+      font-size: 14px; 
+      opacity: 1;
+      max-width: 300px; 
+      line-height: 1.6;
+      pointer-events: none;
+      color: #00ff00;
+      text-align: right;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">Initializing Urban Archaeology System...</div>
+  <div id="hint">
+    [FORENSIC COMMANDS]<br>
+    PINCH FINGERS: Scale Specimen<br>
+    TILT HAND: Rotate Specimen<br>
+    PRESS 'A': Perform AI Scan<br>
+    PRESS 'C': Change Sample
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "@google/generative-ai": "https://esm.run/@google/generative-ai"
+  }
+}
+</script>
+
+<script type="module">
+  import { GoogleGenerativeAI } from "@google/generative-ai";
+
+  const API_KEY = "AIzaSyB4-WCIxVl-xcYtGT8jgIUERohgjOElqqk"; 
+  const genAI = new GoogleGenerativeAI(API_KEY);
+  
+  const model = genAI.getGenerativeModel({ 
+    model: "gemini-3-flash-preview",
+    systemInstruction: `Persona: You are an automated Urban Archaeology System. Tone: Clinical, detached. 
+    Instructions: 
+    1. First, provide a one-line summary of the object's state (e.g., 'A plastic shard that has been sun-bleached and is 400 days old'). OMIT any title like 'Final Analysis'.
+    2. Then, provide data for these headers: [MATERIAL_COMPOSITION], [PRE_DEBRIS_STATE], [TEMPORAL_ESTIMATE], [ENVIRONMENTAL_IMPACT].
+    3. Put the data for each header on a new line immediately FOLLOWING the header.
+    Constraint: Use NO conversational filler. Start immediately with the summary line.`,
+  });
+
+  const generationConfig = { thinkingConfig: { includeThoughts: false }, temperature: 0.5 };
+
+  let aiAnalysis = "SYSTEM IDLE: AWAITING SAMPLE...";
+  let isAnalyzing = false;
+
+  let video, handpose, predictions = [];
+  let glyphImages = [], currentGlyph = null;
+  const IMAGE_ROOT = "assets/letters";  
+  const MANIFEST_PATH = "assets/manifest.json";
+  let manifestData = null;
+
+  async function performAIScan() {
+    if (isAnalyzing || !currentGlyph || predictions.length === 0) return;
+    isAnalyzing = true;
+    aiAnalysis = "SCANNING: TARGETING SPECIMEN...";
+
+    const canvas = document.querySelector('canvas');
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+    const base64Data = dataUrl.split(',')[1];
+
+    try {
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [
+          { text: "Examine Figure 1. Categorize and archive." },
+          { inlineData: { data: base64Data, mimeType: "image/jpeg" } }
+        ]}],
+        generationConfig
+      });
+      aiAnalysis = result.response.text();
+    } catch (err) {
+      aiAnalysis = "ERROR: SENSOR FAILURE";
+    }
+    isAnalyzing = false;
+  }
+
+  class Specimen {
+    constructor(x, y, img) {
+      this.x = x; this.y = y;
+      this.img = img;
+      this.size = 100;
+      this.rotation = 0;
+    }
+    update(x, y, d, angle) {
+      this.x = x; this.y = y;
+      this.size = lerp(this.size, map(d, 20, 250, 50, 600), 0.15);
+      this.rotation = angle; 
+    }
+    draw() {
+      push(); translate(this.x, this.y); rotate(this.rotation);
+      imageMode(CENTER);
+      image(this.img, 0, 0, this.size, this.size); pop();
+    }
+  }
+
+  window.preload = () => { manifestData = loadJSON(MANIFEST_PATH); };
+
+  window.setup = () => {
+    createCanvas(windowWidth, windowHeight);
+    if (manifestData) {
+      for (const [letter, files] of Object.entries(manifestData)) {
+        if (!Array.isArray(files)) continue;
+        files.forEach(fileName => {
+          glyphImages.push(loadImage(`${IMAGE_ROOT}/${letter}/${fileName}`));
+        });
+      }
+    }
+    video = createCapture(VIDEO);
+    video.size(640, 480);
+    video.hide(); 
+    handpose = ml5.handpose(video, () => {
+      document.getElementById("loading").style.display = "none";
+    });
+    handpose.on("predict", results => predictions = results);
+  };
+
+  window.draw = () => {
+    push(); translate(width, 0); scale(-1, 1);
+    if (video) image(video, 0, 0, width, height);
+    pop();
+
+    fill(0, 180); rect(0, 0, width, height);
+
+    // --- AI UI DRAWING LOGIC (1/3 Width Box) ---
+    let boxWidth = width / 3;
+    let lines = aiAnalysis.split('\n');
+    let yPos = 40;
+    textFont('Courier New');
+    textSize(14);
+
+    for (let line of lines) {
+      if (line.startsWith('[')) {
+        fill(0, 255, 0);
+        textStyle(BOLD);
+      } else {
+        fill(0, 200, 0);
+        textStyle(NORMAL);
+      }
+      
+      // text(str, x, y, x2, y2) enables word-wrapping within the boxWidth
+      text(line, 40, yPos, boxWidth);
+      
+      // Calculate height of the text block to prevent overlapping
+      let h = textHeight(line, boxWidth);
+      yPos += h + 10; 
+    }
+
+    // INTERACTION
+    if (predictions.length > 0) {
+      let hand = predictions[0];
+      let index = hand.annotations.indexFinger[3];
+      let thumb = hand.annotations.thumb[3];
+      let ix = map(index[0], video.width, 0, 0, width);
+      let iy = map(index[1], 0, video.height, 0, height);
+      let tx = map(thumb[0], video.width, 0, 0, width);
+      let ty = map(thumb[1], 0, video.height, 0, height);
+      let midX = (ix + tx) / 2;
+      let midY = (iy + ty) / 2;
+      let d = dist(ix, iy, tx, ty);
+      let angle = atan2(iy - ty, ix - tx);
+
+      if (!currentGlyph && glyphImages.length > 0) {
+        currentGlyph = new Specimen(midX, midY, random(glyphImages));
+      }
+      if (currentGlyph) {
+        currentGlyph.update(midX, midY, d, angle);
+        currentGlyph.draw();
+      }
+
+      noFill(); stroke(0, 255, 0, 150);
+      line(ix, iy, tx, ty); 
+      ellipse(midX, midY, 10, 10);
+    }
+  };
+
+  // Helper function to calculate dynamic height for word-wrapped text
+  function textHeight(textStr, maxWidth) {
+    let words = textStr.split(' ');
+    let line = '';
+    let h = 14; // Start with one line height
+    for (let n = 0; n < words.length; n++) {
+      let testLine = line + words[n] + ' ';
+      let testWidth = textWidth(testLine);
+      if (testWidth > maxWidth && n > 0) {
+        line = words[n] + ' ';
+        h += 20; // Add height for a new line
+      } else {
+        line = testLine;
+      }
+    }
+    return h;
+  }
+
+  window.keyPressed = () => {
+    if (key === "c" || key === "C") {
+        currentGlyph = null;
+        aiAnalysis = "SYSTEM IDLE: SAMPLE CHANGED.";
+    }
+    if (key === "a" || key === "A") performAIScan();
+  };
+</script>
+</body>
+</html>
