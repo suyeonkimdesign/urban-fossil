@@ -66,8 +66,8 @@ const API_KEY = part1 + part2;
 
   const genAI = new GoogleGenerativeAI(API_KEY);
   
-  const model = genAI.getGenerativeModel({ 
-    model: "gemini-3-flash-preview",
+ const model = genAI.getGenerativeModel({ 
+  model: "gemini-1.5-flash",
     systemInstruction: `Persona: You are an automated Urban Archaeology System. Tone: Clinical, detached. 
     Instructions: 
     1. First, provide a one-line summary of the object's state (e.g., 'A plastic shard that has been sun-bleached and is 400 days old'). OMIT any title like 'Final Analysis'.
