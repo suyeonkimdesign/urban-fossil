@@ -60,8 +60,8 @@
 <script type="module">
   import { GoogleGenerativeAI } from "@google/generative-ai";
 
- const part1 = "AIzaSyDF9MNEQ0Sa8H...";
-const part2 = "...sGYrRmx92qteYcA9JGEEE";
+ const part1 = "AIzaSyDF9MNEQ0Sa8H";
+const part2 = "sGYrRmx92qteYcA9JGEEE";
 const API_KEY = part1 + part2;
 
   const genAI = new GoogleGenerativeAI(API_KEY);
@@ -80,7 +80,7 @@ const generationConfig = {
     temperature: 0.7,
     maxOutputTokens: 500
   };
-  
+
   let aiAnalysis = "SYSTEM IDLE: AWAITING SAMPLE...";
   let isAnalyzing = false;
 
