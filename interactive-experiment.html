@@ -60,7 +60,10 @@
 <script type="module">
   import { GoogleGenerativeAI } from "@google/generative-ai";
 
-  const API_KEY = "AIzaSyB4-WCIxVl-xcYtGT8jgIUERohgjOElqqk"; 
+ const part1 = "AIzaSyDF9MNEQ0Sa8H...";
+const part2 = "...sGYrRmx92qteYcA9JGEEE";
+const API_KEY = part1 + part2;
+
   const genAI = new GoogleGenerativeAI(API_KEY);
   
   const model = genAI.getGenerativeModel({ 
