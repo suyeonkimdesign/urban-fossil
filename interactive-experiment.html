@@ -76,7 +76,7 @@ const API_KEY = part1 + part2;
     Constraint: Use NO conversational filler. Start immediately with the summary line.`,
   });
 
-  const generationConfig = { thinkingConfig: { includeThoughts: false }, temperature: 0.5 };
+const generationConfig = { temperature: 0.5 };
 
   let aiAnalysis = "SYSTEM IDLE: AWAITING SAMPLE...";
   let isAnalyzing = false;
