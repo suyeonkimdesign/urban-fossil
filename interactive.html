@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Urban Fossil — Interactive</title>
+  <title>Urban Fossil — Vertical LED Installation</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
@@ -14,28 +14,58 @@
       background: #000; color: #fff;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
-    canvas { display: block; }
+    /* Hard-coding the LED container size for a centered preview on your Mac */
+    canvas { display: block; margin: 0 auto; }
+    
     #loading {
       position: fixed; inset: 0; display: flex; align-items: center;
-      justify-content: center; font-size: 16px; z-index: 10;
+      justify-content: center; font-size: 18px; z-index: 20;
       background: #000; letter-spacing: 2px; text-transform: uppercase;
     }
+
     .stats {
-      position: fixed; top: 30px; font-size: 28px; font-weight: 300;
-      letter-spacing: 1px; z-index: 5; pointer-events: none;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+      position: fixed; 
+      left: 0;
+      width: 100%;
+      z-index: 10;
+      pointer-events: none;
+      font-weight: 900; 
+      text-transform: uppercase;
+      line-height: 0.85;
+      text-shadow: 0px 4px 10px rgba(0,0,0,1); /* Extra deep shadow for LED visibility */
     }
-    #timer-display { left: 40px; }
-    #trash-display { right: 40px; text-align: right; }
+
+    /* TRASH DATA AT TOP */
+    #trash-display { 
+      top: 40px; 
+      font-size: 64px; /* Optimized for 512px width */
+      text-align: center;
+    }
+
+    /* TIMER AT BOTTOM */
+    #timer-display { 
+      bottom: 40px; 
+      font-size: 72px; 
+      text-align: center;
+    }
+
+    .unit-subtext {
+      font-size: 24px;
+      display: block;
+      margin-top: 5px;
+      font-weight: 600;
+      opacity: 0.9;
+    }
   </style>
 </head>
 <body>
-  <div id="loading">Initializing System...</div>
+  <div id="loading">Initializing Urban Fossil...</div>
+  
+  <div id="trash-display" class="stats">0.000g<span class="unit-subtext">0.000 lbs</span></div>
   <div id="timer-display" class="stats">00:00:00</div>
-  <div id="trash-display" class="stats">0.000g<br><span style="font-size:16px">0.000 lbs</span></div>
 
   <script>
-    let capture; // p5 video capture object
+    let capture;
     let handsDetector;
     let detections = [];
 
@@ -45,7 +75,7 @@
     let glyphImages = [];
     let glyphs = [];
 
-    // --- TRACKING & PERSISTENCE ---
+    // --- TRACKING & ACCUMULATED DATA ---
     let lastSprayTime = 0;
     let totalSeconds = parseFloat(localStorage.getItem('urbanFossilSeconds')) || 0;
     let lastUpdateTime = 0;
@@ -59,7 +89,8 @@
       }
       update() {
         let age = millis() - this.birthTime;
-        if (age > 2000) this.alpha -= 10; 
+        // Dissipate after 2 seconds
+        if (age > 2000) this.alpha -= 5; 
       }
       draw() {
         if (this.alpha <= 0) return;
@@ -74,7 +105,8 @@
     }
 
     function setup() {
-      createCanvas(windowWidth, windowHeight);
+      // Set to the LED specific resolution
+      createCanvas(512, 768);
       
       loadJSON(MANIFEST_PATH, (data) => {
         for (const [letter, files] of Object.entries(data)) {
@@ -82,12 +114,10 @@
         }
       });
 
-      // 1. Initialize p5 Capture (This is more reliable for p5's draw loop)
       capture = createCapture(VIDEO);
-      capture.size(1280, 720);
+      capture.size(1280, 720); // High-res capture for better tracking
       capture.hide();
 
-      // 2. Initialize MediaPipe Hands
       handsDetector = new Hands({
         locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
       });
@@ -97,18 +127,14 @@
         modelComplexity: 1,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5,
-        selfieMode: true // Mirrors tracking coordinates
+        selfieMode: true 
       });
 
-      handsDetector.onResults(onResults);
+      handsDetector.onResults((results) => { detections = results.multiHandLandmarks; });
 
-      // 3. Connect MediaPipe to the p5 capture stream
       const camera = new Camera(capture.elt, {
-        onFrame: async () => {
-          await handsDetector.send({image: capture.elt});
-        },
-        width: 1280,
-        height: 720
+        onFrame: async () => { await handsDetector.send({image: capture.elt}); },
+        width: 1280, height: 720
       });
       
       camera.start().then(() => {
@@ -116,56 +142,48 @@
       });
     }
 
-    function onResults(results) {
-      detections = results.multiHandLandmarks;
-    }
-
     function draw() {
       background(0);
 
-      // 1. Draw the video mirrored
+      // MIRROR LOGIC & "COVER" SCALING
       if (capture.loadedmetadata) {
         push();
-        translate(width, 0);
-        scale(-1, 1); // Mirror the canvas horizontally
+        translate(width, 0); scale(-1, 1);
         
-        // Calculate aspect ratio for "cover" mode
         let videoAspect = capture.width / capture.height;
         let canvasAspect = width / height;
         let imgW, imgH;
 
-        if (canvasAspect > videoAspect) {
-          imgW = width;
-          imgH = width / videoAspect;
-        } else {
+        if (canvasAspect < videoAspect) {
           imgH = height;
           imgW = height * videoAspect;
+        } else {
+          imgW = width;
+          imgH = width / videoAspect;
         }
         
-        // Draw centered
         image(capture, (width - imgW) / 2, (height - imgH) / 2, imgW, imgH);
         pop();
       }
 
-      // 2. Subtle Tint Overlay
-      fill(0, 150); 
+      // Brighter tint overlay for visibility
+      fill(0, 30); 
       rect(0, 0, width, height);
 
       handleStats();
 
-      // 3. Process Detections
+      // Hand Tracking & Spraying
       if (detections && detections.length > 0) {
         let landmarks = detections[0];
         let indexTip = landmarks[8];
         let wrist = landmarks[0];
         let pinkyBase = landmarks[17];
 
-        // Mirror coordinates for spraying (selfieMode handles the X-flip)
         let x = map(indexTip.x, 0, 1, 0, width); 
         let y = map(indexTip.y, 0, 1, 0, height);
 
         let handDist = dist(wrist.x, wrist.y, pinkyBase.x, pinkyBase.y);
-        let spraySize = map(handDist, 0.05, 0.25, 40, 450);
+        let spraySize = map(handDist, 0.05, 0.25, 40, 500);
 
         if (millis() - lastSprayTime > 500 && glyphImages.length > 0) {
           glyphs.push(new Glyph(x, y, random(glyphImages), spraySize));
@@ -173,7 +191,7 @@
         }
       }
 
-      // 4. Update and Render Glyphs
+      // Draw Glyphs
       for (let i = glyphs.length - 1; i >= 0; i--) {
         glyphs[i].update();
         glyphs[i].draw();
@@ -201,10 +219,9 @@
       let grams = totalSeconds * 0.026;
       let lbs = grams * 0.00220462;
       document.getElementById('trash-display').innerHTML = 
-        `${grams.toFixed(3)}g<br><span style="font-size:16px">${lbs.toFixed(3)} lbs</span>`;
+        `${grams.toFixed(3)}g<span class="unit-subtext">${lbs.toFixed(3)} lbs</span>`;
     }
 
-    function windowResized() { resizeCanvas(windowWidth, windowHeight); }
     function keyPressed() { if (key === 'c' || key === 'C') glyphs = []; }
   </script>
 </body>
