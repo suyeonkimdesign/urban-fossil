@@ -9,13 +9,32 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 
   <style>
-    html, body {
-      margin: 0; padding: 0; overflow: hidden;
-      background: #000; color: #fff;
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    /* 1) Font Integration */
+    @font-face {
+      font-family: 'GT-Zirkon';
+      src: url('assets/GT-Zirkon-Bold.otf') format('opentype');
+      font-weight: bold;
+      font-style: normal;
     }
-    /* Hard-coding the LED container size for a centered preview on your Mac */
-    canvas { display: block; margin: 0 auto; }
+
+    html, body {
+      margin: 0; 
+      padding: 0; 
+      overflow: hidden;
+      background: #000; 
+      color: #fff;
+      font-family: 'GT-Zirkon', system-ui, sans-serif;
+      /* Ensure everything sticks to the far left of the browser */
+      display: flex;
+      justify-content: flex-start;
+      align-items: flex-start;
+    }
+
+    /* 2) Left-aligned Canvas */
+    canvas { 
+      display: block; 
+      margin: 0; 
+    }
     
     #loading {
       position: fixed; inset: 0; display: flex; align-items: center;
@@ -23,37 +42,33 @@
       background: #000; letter-spacing: 2px; text-transform: uppercase;
     }
 
+    /* 3) Left-aligned text containers, centered within the 512px column */
     .stats {
       position: fixed; 
       left: 0;
-      width: 100%;
+      width: 512px; 
       z-index: 10;
       pointer-events: none;
-      font-weight: 900; 
       text-transform: uppercase;
       line-height: 0.85;
-      text-shadow: 0px 4px 10px rgba(0,0,0,1); /* Extra deep shadow for LED visibility */
+      text-align: center; 
+      text-shadow: none; /* Shadow removed for clinical look */
     }
 
-    /* TRASH DATA AT TOP */
     #trash-display { 
       top: 40px; 
-      font-size: 64px; /* Optimized for 512px width */
-      text-align: center;
+      font-size: 64px; 
     }
 
-    /* TIMER AT BOTTOM */
     #timer-display { 
       bottom: 40px; 
       font-size: 72px; 
-      text-align: center;
     }
 
     .unit-subtext {
       font-size: 24px;
       display: block;
       margin-top: 5px;
-      font-weight: 600;
       opacity: 0.9;
     }
   </style>
@@ -75,8 +90,8 @@
     let glyphImages = [];
     let glyphs = [];
 
-    // --- TRACKING & ACCUMULATED DATA ---
-    let lastSprayTime = 0;
+    // --- TRACKING & DATA ---
+    let handTimers = {}; // Independent timers for multi-hand generation
     let totalSeconds = parseFloat(localStorage.getItem('urbanFossilSeconds')) || 0;
     let lastUpdateTime = 0;
 
@@ -89,7 +104,6 @@
       }
       update() {
         let age = millis() - this.birthTime;
-        // Dissipate after 2 seconds
         if (age > 2000) this.alpha -= 5; 
       }
       draw() {
@@ -105,7 +119,6 @@
     }
 
     function setup() {
-      // Set to the LED specific resolution
       createCanvas(512, 768);
       
       loadJSON(MANIFEST_PATH, (data) => {
@@ -115,7 +128,7 @@
       });
 
       capture = createCapture(VIDEO);
-      capture.size(1280, 720); // High-res capture for better tracking
+      capture.size(1280, 720); 
       capture.hide();
 
       handsDetector = new Hands({
@@ -123,7 +136,7 @@
       });
 
       handsDetector.setOptions({
-        maxNumHands: 1,
+        maxNumHands: 4, // Up to 4 hands at once
         modelComplexity: 1,
         minDetectionConfidence: 0.5,
         minTrackingConfidence: 0.5,
@@ -145,53 +158,52 @@
     function draw() {
       background(0);
 
-      // MIRROR LOGIC & "COVER" SCALING
+      // 1) Mirror & Cover Logic
       if (capture.loadedmetadata) {
         push();
         translate(width, 0); scale(-1, 1);
-        
         let videoAspect = capture.width / capture.height;
         let canvasAspect = width / height;
         let imgW, imgH;
-
         if (canvasAspect < videoAspect) {
-          imgH = height;
-          imgW = height * videoAspect;
+          imgH = height; imgW = height * videoAspect;
         } else {
-          imgW = width;
-          imgH = width / videoAspect;
+          imgW = width; imgH = width / videoAspect;
         }
-        
         image(capture, (width - imgW) / 2, (height - imgH) / 2, imgW, imgH);
         pop();
       }
 
-      // Brighter tint overlay for visibility
-      fill(0, 30); 
+      // 2) Darker Tint (Increased to 70)
+      fill(0, 120); 
       rect(0, 0, width, height);
 
       handleStats();
 
-      // Hand Tracking & Spraying
+      // 3) Multi-Hand Independent Spraying
       if (detections && detections.length > 0) {
-        let landmarks = detections[0];
-        let indexTip = landmarks[8];
-        let wrist = landmarks[0];
-        let pinkyBase = landmarks[17];
+        detections.forEach((landmarks, index) => {
+          let handID = "hand_" + index;
+          if (!handTimers[handID]) handTimers[handID] = 0;
 
-        let x = map(indexTip.x, 0, 1, 0, width); 
-        let y = map(indexTip.y, 0, 1, 0, height);
+          let indexTip = landmarks[8];
+          let wrist = landmarks[0];
+          let pinkyBase = landmarks[17];
 
-        let handDist = dist(wrist.x, wrist.y, pinkyBase.x, pinkyBase.y);
-        let spraySize = map(handDist, 0.05, 0.25, 40, 500);
+          // Edge mapping allows letters to sit partially off-canvas
+          let x = map(indexTip.x, 0, 1, 0, width); 
+          let y = map(indexTip.y, 0, 1, 0, height);
 
-        if (millis() - lastSprayTime > 500 && glyphImages.length > 0) {
-          glyphs.push(new Glyph(x, y, random(glyphImages), spraySize));
-          lastSprayTime = millis();
-        }
+          let handDist = dist(wrist.x, wrist.y, pinkyBase.x, pinkyBase.y);
+          let spraySize = map(handDist, 0.05, 0.25, 40, 500);
+
+          if (millis() - handTimers[handID] > 500 && glyphImages.length > 0) {
+            glyphs.push(new Glyph(x, y, random(glyphImages), spraySize));
+            handTimers[handID] = millis();
+          }
+        });
       }
 
-      // Draw Glyphs
       for (let i = glyphs.length - 1; i >= 0; i--) {
         glyphs[i].update();
         glyphs[i].draw();
