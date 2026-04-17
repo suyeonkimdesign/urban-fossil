@@ -4,198 +4,208 @@
   <meta charset="UTF-8" />
   <title>Urban Fossil — Interactive</title>
 
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #000;
-      color: #fff;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      margin: 0; padding: 0; overflow: hidden;
+      background: #000; color: #fff;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
-
-    canvas {
-      display: block;
-    }
-
+    canvas { display: block; }
     #loading {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      background: radial-gradient(circle at center, #111 0%, #000 60%);
-      z-index: 10;
+      position: fixed; inset: 0; display: flex; align-items: center;
+      justify-content: center; font-size: 16px; z-index: 10;
+      background: #000; letter-spacing: 2px; text-transform: uppercase;
     }
-
-    #hint {
-      position: fixed;
-      left: 16px;
-      bottom: 16px;
-      font-size: 12px;
-      opacity: 0.6;
-      max-width: 260px;
-      line-height: 1.4;
-      pointer-events: none;
+    .stats {
+      position: fixed; top: 30px; font-size: 28px; font-weight: 300;
+      letter-spacing: 1px; z-index: 5; pointer-events: none;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
     }
+    #timer-display { left: 40px; }
+    #trash-display { right: 40px; text-align: right; }
   </style>
 </head>
 <body>
-  <div id="loading">Loading camera &amp; hand tracking…</div>
-  <div id="hint">Move your hand in front of the camera to spray Urban Fossil letters. Press “C” to clear.</div>
-
-  <!-- p5.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-  <!-- ml5.js -->
-  <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+  <div id="loading">Initializing System...</div>
+  <div id="timer-display" class="stats">00:00:00</div>
+  <div id="trash-display" class="stats">0.000g<br><span style="font-size:16px">0.000 lbs</span></div>
 
   <script>
-    let video;
-    let handpose;
-    let predictions = [];
+    let capture; // p5 video capture object
+    let handsDetector;
+    let detections = [];
 
+    // --- ASSETS ---
+    const IMAGE_ROOT = "assets/letters";  
+    const MANIFEST_PATH = "assets/manifest.json";
     let glyphImages = [];
     let glyphs = [];
 
-    const IMAGE_ROOT    = "assets/letters";  
-    const MANIFEST_PATH = "assets/manifest.json";
-
-    let manifestData = null;
+    // --- TRACKING & PERSISTENCE ---
+    let lastSprayTime = 0;
+    let totalSeconds = parseFloat(localStorage.getItem('urbanFossilSeconds')) || 0;
+    let lastUpdateTime = 0;
 
     class Glyph {
-      constructor(x, y, img) {
-        this.x = x;
-        this.y = y;
-
-        this.vx = random(-1, 1);
-        this.vy = random(-0.5, 1.5);
-
-        this.life = 255;
-        this.img = img;
-        this.size = random(40, 120);    
+      constructor(x, y, img, size) {
+        this.x = x; this.y = y; this.img = img; this.size = size;
+        this.alpha = 255;
+        this.birthTime = millis();
         this.rotation = random(TWO_PI);
-        this.rotationSpeed = random(-0.01, 0.01);
       }
-
       update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.vy += 0.01;               
-        this.rotation += this.rotationSpeed;
-        this.life -= 3;
+        let age = millis() - this.birthTime;
+        if (age > 2000) this.alpha -= 10; 
       }
-
       draw() {
+        if (this.alpha <= 0) return;
         push();
         translate(this.x, this.y);
         rotate(this.rotation);
         imageMode(CENTER);
-        tint(255, this.life);
+        tint(255, this.alpha);
         image(this.img, 0, 0, this.size, this.size);
         pop();
       }
-
-      isDead() {
-        return this.life <= 0;
-      }
-    }
-
-    function preload() {
-      manifestData = loadJSON(MANIFEST_PATH);
     }
 
     function setup() {
       createCanvas(windowWidth, windowHeight);
-      noStroke();
-
-      if (manifestData) {
-        for (const [letter, files] of Object.entries(manifestData)) {
-          if (!Array.isArray(files)) continue;
-          files.forEach(fileName => {
-            const imgPath = `${IMAGE_ROOT}/${letter}/${fileName}`;
-            const img = loadImage(
-              imgPath,
-              () => {  },
-              (err) => {
-                console.error("Error loading image:", imgPath, err);
-              }
-            );
-            glyphImages.push(img);
-          });
+      
+      loadJSON(MANIFEST_PATH, (data) => {
+        for (const [letter, files] of Object.entries(data)) {
+          files.forEach(f => glyphImages.push(loadImage(`${IMAGE_ROOT}/${letter}/${f}`)));
         }
-      }
+      });
 
+      // 1. Initialize p5 Capture (This is more reliable for p5's draw loop)
+      capture = createCapture(VIDEO);
+      capture.size(1280, 720);
+      capture.hide();
 
-      video = createCapture(VIDEO);
-      video.size(640, 480);
-      video.hide(); 
+      // 2. Initialize MediaPipe Hands
+      handsDetector = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
 
- 
-      handpose = ml5.handpose(video, onModelReady);
-      handpose.on("predict", results => {
-        predictions = results;
+      handsDetector.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+        selfieMode: true // Mirrors tracking coordinates
+      });
+
+      handsDetector.onResults(onResults);
+
+      // 3. Connect MediaPipe to the p5 capture stream
+      const camera = new Camera(capture.elt, {
+        onFrame: async () => {
+          await handsDetector.send({image: capture.elt});
+        },
+        width: 1280,
+        height: 720
+      });
+      
+      camera.start().then(() => {
+        document.getElementById('loading').style.display = 'none';
       });
     }
 
-    function onModelReady() {
-      console.log("Handpose model ready");
-      const loadingEl = document.getElementById("loading");
-      if (loadingEl) loadingEl.style.display = "none";
-    }
-
-    function windowResized() {
-      resizeCanvas(windowWidth, windowHeight);
+    function onResults(results) {
+      detections = results.multiHandLandmarks;
     }
 
     function draw() {
+      background(0);
 
-      if (video) {
-        image(video, 0, 0, width, height);
-      } else {
-        background(0);
+      // 1. Draw the video mirrored
+      if (capture.loadedmetadata) {
+        push();
+        translate(width, 0);
+        scale(-1, 1); // Mirror the canvas horizontally
+        
+        // Calculate aspect ratio for "cover" mode
+        let videoAspect = capture.width / capture.height;
+        let canvasAspect = width / height;
+        let imgW, imgH;
+
+        if (canvasAspect > videoAspect) {
+          imgW = width;
+          imgH = width / videoAspect;
+        } else {
+          imgH = height;
+          imgW = height * videoAspect;
+        }
+        
+        // Draw centered
+        image(capture, (width - imgW) / 2, (height - imgH) / 2, imgW, imgH);
+        pop();
       }
 
-
-      fill(0, 80);  
+      // 2. Subtle Tint Overlay
+      fill(0, 150); 
       rect(0, 0, width, height);
 
+      handleStats();
 
-      for (let pred of predictions) {
-        if (pred.annotations && pred.annotations.indexFinger) {
-          const tip = pred.annotations.indexFinger[3]; 
-          const vx = video.width;
-          const vy = video.height;
+      // 3. Process Detections
+      if (detections && detections.length > 0) {
+        let landmarks = detections[0];
+        let indexTip = landmarks[8];
+        let wrist = landmarks[0];
+        let pinkyBase = landmarks[17];
 
-          const x = map(tip[0], 0, vx, 0, width);
-          const y = map(tip[1], 0, vy, 0, height);
+        // Mirror coordinates for spraying (selfieMode handles the X-flip)
+        let x = map(indexTip.x, 0, 1, 0, width); 
+        let y = map(indexTip.y, 0, 1, 0, height);
 
+        let handDist = dist(wrist.x, wrist.y, pinkyBase.x, pinkyBase.y);
+        let spraySize = map(handDist, 0.05, 0.25, 40, 450);
 
-          if (frameCount % 2 === 0 && glyphImages.length > 0) {
-            const img = random(glyphImages);
-            glyphs.push(new Glyph(x, y, img));
-          }
+        if (millis() - lastSprayTime > 500 && glyphImages.length > 0) {
+          glyphs.push(new Glyph(x, y, random(glyphImages), spraySize));
+          lastSprayTime = millis();
         }
       }
 
-
-      glyphs.forEach(g => {
-        g.update();
-        g.draw();
-      });
-
-   
-      glyphs = glyphs.filter(g => !g.isDead());
-    }
-
- 
-    function keyPressed() {
-      if (key === "c" || key === "C") {
-        glyphs = [];
+      // 4. Update and Render Glyphs
+      for (let i = glyphs.length - 1; i >= 0; i--) {
+        glyphs[i].update();
+        glyphs[i].draw();
+        if (glyphs[i].alpha <= 0) glyphs.splice(i, 1);
       }
     }
+
+    function handleStats() {
+      if (detections && detections.length > 0) {
+        let now = millis();
+        if (lastUpdateTime > 0) {
+          totalSeconds += (now - lastUpdateTime) / 1000;
+          localStorage.setItem('urbanFossilSeconds', totalSeconds);
+        }
+        lastUpdateTime = now;
+      } else {
+        lastUpdateTime = 0;
+      }
+
+      let h = Math.floor(totalSeconds / 3600);
+      let m = Math.floor((totalSeconds % 3600) / 60);
+      let s = Math.floor(totalSeconds % 60);
+      document.getElementById('timer-display').innerText = `${nf(h,2)}:${nf(m,2)}:${nf(s,2)}`;
+
+      let grams = totalSeconds * 0.026;
+      let lbs = grams * 0.00220462;
+      document.getElementById('trash-display').innerHTML = 
+        `${grams.toFixed(3)}g<br><span style="font-size:16px">${lbs.toFixed(3)} lbs</span>`;
+    }
+
+    function windowResized() { resizeCanvas(windowWidth, windowHeight); }
+    function keyPressed() { if (key === 'c' || key === 'C') glyphs = []; }
   </script>
 </body>
 </html>
