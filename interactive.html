@@ -195,7 +195,7 @@
           let y = map(indexTip.y, 0, 1, 0, height);
 
           let handDist = dist(wrist.x, wrist.y, pinkyBase.x, pinkyBase.y);
-          let spraySize = map(handDist, 0.05, 0.25, 40, 500);
+          let spraySize = map(handDist, 0.05, 0.25, 150, 650);
 
           if (millis() - handTimers[handID] > 500 && glyphImages.length > 0) {
             glyphs.push(new Glyph(x, y, random(glyphImages), spraySize));
